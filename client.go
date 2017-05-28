@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"log"
 	"strings"
-	//"time"
 )
 
 var checkmap = map[string]oss.Option{
@@ -56,15 +56,46 @@ func (cli *Client) ChangeContentType(path string) error {
 	return cli.Bucket.SetObjectMeta(path, option)
 }
 
-func (cli *Client) GenerateTask(path string, config *Config) (Task, error) {
-	lsRes, err := cli.Bucket.ListObjects(oss.Prefix(path))
-	if err != nil {
-		return Task{}, err
+func (cli *Client) GenerateTask(n *NSQD, config *Config) ([]string, error) {
+	marker := oss.Marker("")
+	for {
+		select {
+		case prestr := <-n.PreChan:
+			pre := oss.Prefix(prestr)
+			for {
+				lor, err := cli.Bucket.ListObjects(oss.MaxKeys(10), marker, pre)
+				if err != nil {
+					log.Println(err.Error())
+					return []string{}, err
+				}
+				pre = oss.Prefix(lor.Prefix)
+				marker = oss.Marker(lor.NextMarker)
+				for _, object := range lor.Objects {
+					n.TaskChan <- object.Key
+				}
+				if !lor.IsTruncated {
+					break
+				}
+			}
+		case <-n.ExitChan:
+			break
+		}
 	}
+}
 
-	var taskslice []string
-	for _, object := range lsRes.Objects {
-		taskslice = append(taskslice, object.Key)
+func (cli *Client) Worker(n *NSQD) {
+	for {
+		select {
+		case key := <-n.TaskChan:
+			err := cli.ChangeContentType(string(key))
+			if err != nil {
+				log.Println("error " + string(key) + " " + err.Error())
+			} else {
+				log.Println("ok " + key)
+			}
+
+		case <-n.ExitChan:
+			break
+		}
 	}
-	return Task{Keys: taskslice}, nil
 }
