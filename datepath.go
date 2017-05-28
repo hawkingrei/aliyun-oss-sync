@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"strconv"
 	"time"
 )
@@ -18,14 +19,26 @@ func timepath(y int, m int, d int) string {
 
 func GenerateDateList(d int) []string {
 	var datalist []string
-	starttime := time.Now()
-	nowtime := starttime
+	starttime := time.Now().Add(time.Hour * time.Duration(d) * -24)
 	for {
-		if !nowtime.Add(time.Hour * time.Duration(d) * -24).Before(starttime) {
+		if starttime.After(time.Now()) {
 			break
 		}
 		datalist = append(datalist, timepath(starttime.Year(), int(starttime.Month()), starttime.Day()))
-		starttime = starttime.Add(time.Hour * -24)
+		starttime = starttime.Add(time.Hour * 24)
 	}
 	return datalist
+}
+
+func Preproducor(d int, n *NSQD, config *Config) {
+	for _, datepath := range GenerateDateList(d) {
+		path := config.PrefixPath + datepath
+		log.Printf("make " + path)
+		select {
+		case n.PreChan <- path:
+			break
+		case <-n.ExitChan:
+			break
+		}
+	}
 }
