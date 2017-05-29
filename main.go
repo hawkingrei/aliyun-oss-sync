@@ -1,10 +1,14 @@
 package main
 
+import (
+	"github.com/hawkingrei/golang_util"
+)
+
 type NSQD struct {
 	PreChan   chan string
 	TaskChan  chan string
 	ExitChan  chan int
-	WaitGroup WaitGroupWrapper
+	WaitGroup util.WaitGroupWrapper
 }
 
 func New() *NSQD {
